@@ -68,7 +68,7 @@ public class NetFunctionGenerator : IIncrementalGenerator
         while (baseType != null)
         {
             var name = baseType.Name;
-            if (name == "NetNode3D" || name == "NetNode2D" || name == "NetNode")
+            if (name == "NetNode3D" || name == "NetNode2D" || name == "NetNode" || name == "NetRigidBody3D" || name == "NetCharacterBody3D")
             {
                 return name;
             }

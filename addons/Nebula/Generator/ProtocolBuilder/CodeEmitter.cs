@@ -382,7 +382,8 @@ namespace Nebula.Generators
             sb.AppendLine($"{indent}    \"{Escape(func.Name)}\",");
             sb.AppendLine($"{indent}    {func.Index},");
             EmitArgumentsArray(sb, func.Arguments, indent + "    ");
-            sb.AppendLine($"{indent}    (NetworkSources){func.Sources}),");
+            sb.AppendLine($"{indent}    (NetworkSources){func.Sources},");
+            sb.AppendLine($"{indent}    {func.TargetPeer.ToString().ToLowerInvariant()}),");
         }
 
         private static void EmitFunctionWithIntKey(StringBuilder sb, int key, FunctionData func, string indent)
@@ -392,7 +393,8 @@ namespace Nebula.Generators
             sb.AppendLine($"{indent}    \"{Escape(func.Name)}\",");
             sb.AppendLine($"{indent}    {func.Index},");
             EmitArgumentsArray(sb, func.Arguments, indent + "    ");
-            sb.AppendLine($"{indent}    (NetworkSources){func.Sources}),");
+            sb.AppendLine($"{indent}    (NetworkSources){func.Sources},");
+            sb.AppendLine($"{indent}    {func.TargetPeer.ToString().ToLowerInvariant()}),");
         }
 
         private static void EmitArgumentsArray(StringBuilder sb, List<ArgumentData> args, string indent)

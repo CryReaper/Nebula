@@ -332,7 +332,8 @@ namespace Nebula.Generators
                                 NodePath = $"{nodePath}/{func.Value.NodePath}",
                                 Name = func.Value.Name,
                                 Index = (byte)functionCount++,
-                                Sources = func.Value.Sources
+                                Sources = func.Value.Sources,
+                                TargetPeer = func.Value.TargetPeer
                             };
                             newFunc.Arguments.AddRange(func.Value.Arguments);
                             result.Functions[newNodePath][func.Key] = newFunc;
@@ -425,7 +426,8 @@ namespace Nebula.Generators
                             NodePath = nodePath,
                             Name = func.Name,
                             Index = (byte)functionCount++,
-                            Sources = func.Sources
+                            Sources = func.Sources,
+                            TargetPeer = func.TargetPeer
                         };
 
                         foreach (var param in func.Parameters)

@@ -49,6 +49,7 @@ namespace Nebula.Generators
             public string Name { get; init; } = "";
             public List<ParameterInfo> Parameters { get; init; } = new();
             public int Sources { get; init; } = 3; // All by default
+            public bool TargetPeer { get; init; } = false;
         }
 
         public sealed class ParameterInfo
@@ -390,13 +391,14 @@ namespace Nebula.Generators
                     {
                         Name = method.Name,
                         Parameters = method.Parameters
-                            .Select(p => {
+                            .Select(p =>
+                            {
                                 var isEnum = p.Type.TypeKind == TypeKind.Enum;
                                 string? enumUnderlying = null;
                                 if (isEnum && p.Type is INamedTypeSymbol enumType)
                                     enumUnderlying = enumType.EnumUnderlyingType?.ToDisplayString();
-                                return new ParameterInfo 
-                                { 
+                                return new ParameterInfo
+                                {
                                     TypeFullName = GetFullTypeName(p.Type),
                                     IsEnum = isEnum,
                                     EnumUnderlyingTypeName = enumUnderlying
@@ -404,6 +406,7 @@ namespace Nebula.Generators
                             })
                             .ToList(),
                         Sources = GetNamedArgument(netFuncAttr, "Source", 3), // Default All = 3
+                        TargetPeer = GetNamedArgument(netFuncAttr, "TargetPeer", false)
                     };
                 }
 

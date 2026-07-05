@@ -4,6 +4,7 @@ using Godot;
 using Nebula.Serialization;
 using MethodBoundaryAspect.Fody.Attributes;
 using Nebula.Utility.Tools;
+using System.ComponentModel;
 
 namespace Nebula
 {
@@ -24,6 +25,13 @@ namespace Nebula
         // TODO: Ensure this is used in WorldRunner to correctly filter out invalid calls
         public NetworkSources Source { get; set; } = NetworkSources.All;
         public bool ExecuteOnCaller { get; set; } = true;
+
+        /// <summary>
+        /// Specify this NetFunction to be targetable and sent to a specific peer.  The first parameter must be a UUID that specifies which peer to target.
+        /// Using an empty UUID will allow for default server source behavior and send to all peers. Only useable when network source is server.
+        /// </summary>
+        public bool TargetPeer { get; set; } = false;
+        
         public override void OnEntry(MethodExecutionArgs args)
         {
             // Debugger.Instance.Log(Debugger.DebugLevel.VERBOSE, $"NetFunction: {args.Method.Name} called on {args.Instance.GetType().Name}");
@@ -47,6 +55,16 @@ namespace Nebula
                 if (NetRunner.Instance.IsClient && (Source & NetworkSources.Client) == 0)
                 {
                     return;
+                }
+
+                if (TargetPeer && Source == NetworkSources.Client)
+                {
+                    throw new Exception("NetFunction with TargetPeer=true is only supported for server sources");
+                }
+
+                if (TargetPeer && (args.Arguments.Length == 0 || args.Arguments[0] is not string))  //TODO: change to UUID when netfunction serialization updated
+                {
+                    throw new Exception("NetFunction with TargetPeer=true must have UUID as first parameter");
                 }
 
                 // Use cached NetSceneFilePath to avoid Godot StringName allocations

@@ -2578,22 +2578,43 @@ namespace Nebula
             if (NetRunner.Instance.IsServer)
             {
                 var node = GetNodeFromNetId(netId);
-                // TODO: Apply interest layers for network function, like network property
-                foreach (var peer in node.InterestLayers.Keys)
+                var targetPeer = UUID.Empty;
+
+                if (functionInfo.TargetPeer)
+                    targetPeer = new UUID((string)args[0]); //TODO: change to UUID when netfunction serialization updated
+                    
+                //server send to all peers, not targetpeer function or targetpeer with empty uuid
+                if (!functionInfo.TargetPeer || (functionInfo.TargetPeer && targetPeer == UUID.Empty))
+                {
+                    // TODO: Apply interest layers for network function, like network property
+                    foreach (var peer in node.InterestLayers.Keys)
+                    {
+                        using var buffer = new NetBuffer();
+                        NetId.NetworkSerialize(this, NetRunner.Instance.Peers[peer], netId, buffer);
+                        NetWriter.WriteByte(buffer, functionInfo.Index);
+                        for (int i = 0; i < args.Length; i++)
+                        {
+                            // Use protocol metadata directly, no Variant conversion
+                            NetWriter.WriteByType(buffer, functionInfo.Arguments[i].VariantType, args[i]);
+                        }
+                        NetRunner.SendReliable(NetRunner.Instance.Peers[peer], (byte)NetRunner.ENetChannelId.Function, buffer);
+                    }
+                }
+                else //server send to target peer
                 {
                     using var buffer = new NetBuffer();
-                    NetId.NetworkSerialize(this, NetRunner.Instance.Peers[peer], netId, buffer);
+                    NetId.NetworkSerialize(this, NetRunner.Instance.Peers[targetPeer], netId, buffer);
                     NetWriter.WriteByte(buffer, functionInfo.Index);
                     for (int i = 0; i < args.Length; i++)
                     {
                         // Use protocol metadata directly, no Variant conversion
                         NetWriter.WriteByType(buffer, functionInfo.Arguments[i].VariantType, args[i]);
                     }
-                    NetRunner.SendReliable(NetRunner.Instance.Peers[peer], (byte)NetRunner.ENetChannelId.Function, buffer);
+                    NetRunner.SendReliable(NetRunner.Instance.Peers[targetPeer], (byte)NetRunner.ENetChannelId.Function, buffer);
                 }
             }
             else
-            {
+            {                
                 using var buffer = new NetBuffer();
                 NetId.NetworkSerialize(this, NetRunner.Instance.ServerPeer, netId, buffer);
                 NetWriter.WriteByte(buffer, functionInfo.Index);

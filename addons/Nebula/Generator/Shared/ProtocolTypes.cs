@@ -189,19 +189,22 @@ namespace Nebula.Serialization
         public readonly byte Index;
         public readonly NetFunctionArgument[] Arguments;
         public readonly NetworkSources Sources;
+        public readonly bool TargetPeer = false;
 
         public ProtocolNetFunction(
             string nodePath,
             string name,
             byte index,
             NetFunctionArgument[] arguments,
-            NetworkSources sources)
+            NetworkSources sources,
+            bool targetPeer)
         {
             NodePath = nodePath;
             Name = name;
             Index = index;
             Arguments = arguments;
             Sources = sources;
+            TargetPeer = targetPeer;
         }
     }
 

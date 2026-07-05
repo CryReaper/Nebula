@@ -70,6 +70,7 @@ namespace Nebula.Generators
         public byte Index { get; set; }
         public List<ArgumentData> Arguments { get; } = new();
         public int Sources { get; set; } = 3;
+        public bool TargetPeer { get; set; } = false;
     }
 
     internal sealed class ArgumentData

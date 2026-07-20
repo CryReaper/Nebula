@@ -968,8 +968,8 @@ namespace Nebula
         /// <summary>
         /// Invoked when a player joins the world (sync status becomes IN_WORLD).
         /// </summary>
-        public event Action<UUID> OnPlayerJoined;
-        public event Action<UUID> OnPlayerCleanup;
+        public event Action<UUID, UUID> OnPlayerJoined;
+        public event Action<UUID, UUID> OnPlayerCleanup;
 
 
         /// <summary>
@@ -1062,7 +1062,7 @@ namespace Nebula
             NetRunner.Instance.WorldPeerMap.Remove(peerId);
             NetRunner.Instance.PeerWorldMap.Remove(peerId);
             NetRunner.Instance.PeerIds.Remove(peer.ID);
-            OnPlayerCleanup?.Invoke(peerId);
+            OnPlayerCleanup?.Invoke(WorldId, peerId);
         }
 
         private int _frameCounter = 0;
@@ -1757,7 +1757,7 @@ namespace Nebula
 
             foreach (var peerId in _pendingPlayerJoined)
             {
-                OnPlayerJoined?.Invoke(peerId);
+                OnPlayerJoined?.Invoke(WorldId, peerId);
             }
 
             _pendingPlayerJoined.Clear();

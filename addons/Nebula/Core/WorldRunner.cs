@@ -2100,7 +2100,7 @@ namespace Nebula
             // can be exported on the same tick as the spawn
             if (RootScene != null)
             {
-                RootScene._OnPeerConnected(peerId);
+                RootScene._OnPeerConnected(WorldId, peerId);
             }
         }
 

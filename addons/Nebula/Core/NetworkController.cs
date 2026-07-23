@@ -1380,7 +1380,7 @@ namespace Nebula
 			return null;
 		}
 
-		public void _OnPeerConnected(UUID peerId)
+		public void _OnPeerConnected(UUID worldId, UUID peerId)
 		{
 			var peer = NetRunner.Instance.Peers[peerId];
 			SetPeerInterest(peerId, NetNode.InitializeInterest(peer), recurse: false);

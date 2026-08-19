@@ -15,6 +15,8 @@ namespace Nebula
     /// </summary>
     public partial class NetRunner : Node
     {
+        public INetTransport Transport { get; private set; }
+
         /// <summary>
         /// A fully qualified domain (www.example.com) or IP address (192.168.1.1) of the host. Used for client connections.
         /// Can be overridden via SERVER_ADDRESS environment variable or .env file.
@@ -56,10 +58,9 @@ namespace Nebula
         /// Maximum number of channels per connection.
         /// Must be at least 250 to support Blastoff admin channel (249).
         /// </summary>
-        private const int MaxChannels = 251;
+        internal const int MaxChannels = 251;
 
         public Dictionary<UUID, WorldRunner> Worlds { get; private set; } = [];
-        internal Host ENetHost;
         internal Peer ServerPeer;
 
         internal Dictionary<UUID, NetPeer> Peers = [];
@@ -89,14 +90,14 @@ namespace Nebula
         /// <summary>
         /// This is set after <see cref="StartClient"/> or <see cref="StartServer"/> is called, i.e. when <see cref="NetStarted"/> == true. Before that, this value is unreliable.
         /// </summary>
-        internal bool IsServer { get; private set; }
+        internal bool IsServer { get; set; }
 
         internal bool IsClient => !IsServer;
 
         /// <summary>
         /// This is set to true once <see cref="StartClient"/> or <see cref="StartServer"/> have succeeded.
         /// </summary>
-        public bool NetStarted { get; private set; }
+        public bool NetStarted { get; internal set; }
 
         /// <summary>
         /// Describes the channels of communication used by the network.
@@ -130,7 +131,7 @@ namespace Nebula
         /// <summary>
         /// This is only used to prevent plugins from using reserved channels or reserving each other's channels.
         /// </summary>
-        private Dictionary<int, Action<NetPeer, byte[]>> ReservedChannels = [];
+        internal Dictionary<int, Action<NetPeer, byte[]>> ReservedChannels = [];
 
         /// <summary>
         /// Reserve a channel for custom use, e.g. within plugins. If the channel is already reserved, it will throw an exception.
@@ -154,8 +155,6 @@ namespace Nebula
         /// </summary>
         public static NetRunner Instance { get; internal set; }
 
-        private static bool _libraryInitialized = false;
-
         /// <inheritdoc/>
         public override void _EnterTree()
         {
@@ -165,22 +164,6 @@ namespace Nebula
                 return;
             }
             Instance = this;
-
-            if (!_libraryInitialized)
-            {
-                try
-                {
-                    if (!Library.Initialize())
-                    {
-                        return;
-                    }
-                    _libraryInitialized = true;
-                }
-                catch (Exception e)
-                {
-                    return;
-                }
-            }
         }
 
         public override void _Ready()
@@ -191,16 +174,8 @@ namespace Nebula
 
         public override void _ExitTree()
         {
-            ENetHost?.Flush();
-            ENetHost?.Dispose();
             DebugHub?.Stop();
             DebugHub = null;
-
-            if (_libraryInitialized && Instance == this)
-            {
-                Library.Deinitialize();
-                _libraryInitialized = false;
-            }
         }
 
         /// <summary>
@@ -268,7 +243,7 @@ namespace Nebula
             {
                 Debugger.Instance.Log(Debugger.DebugLevel.WARN, $"Setting authentication on NetRunner after it was already set. This is only a bug if it was unintentional.");
             }
-            OnPeerConnected += (uint peerId) =>
+            Transport.OnPeerConnected += (uint peerId) =>
             {
                 var peer = GetPeerByNativeId(peerId);
                 if (peer.IsSet)
@@ -276,7 +251,7 @@ namespace Nebula
                     Authentication.ServerAuthenticateClient(peer);
                 }
             };
-            OnConnectedToServer += () =>
+            Transport.OnConnectedToServer += () =>
             {
                 Authentication.ClientAuthenticateWithServer();
             };
@@ -285,72 +260,12 @@ namespace Nebula
 
         public void StartServer()
         {
-            System.Runtime.GCSettings.LatencyMode = System.Runtime.GCLatencyMode.SustainedLowLatency;
-
-            if (Authentication == null)
-            {
-                SetAuthentication(new DefaultAuthenticator());
-            }
-
-            IsServer = true;
-            Debugger.Instance.Log("Starting Server");
-            GetTree().MultiplayerPoll = false;
-
-            ENetHost = new Host();
-            var address = new Address();
-            // Note: For server, only set Port. Do NOT call SetHost - this binds to all interfaces (0.0.0.0)
-            address.Port = (ushort)Port;
-
-            try
-            {
-                ENetHost.Create(address, MaxPeers, MaxChannels);
-                // Note: ENet-CSharp doesn't have built-in compression like Godot's ENET wrapper
-            }
-            catch (Exception ex)
-            {
-                Debugger.Instance.Log(Debugger.DebugLevel.ERROR, $"Error starting: {ex.Message}");
-                return;
-            }
-
-            NetStarted = true;
-            Debugger.Instance.Log($"Started on port {Port}");
-
-            // The debug channel is not started here: it is process-wide (see
-            // StartDebugHub) so that clients get one too, and so it is already
-            // listening before the network starts.
+            Transport.StartServer();
         }
 
         public void StartClient()
         {
-            System.Runtime.GCSettings.LatencyMode = System.Runtime.GCLatencyMode.Interactive;
-
-            if (Authentication == null)
-            {
-                SetAuthentication(new DefaultAuthenticator());
-            }
-
-            ENetHost = new Host();
-            ENetHost.Create();
-
-            var address = new Address();
-            address.SetHost(ServerAddress);
-            address.Port = (ushort)Port;
-
-            // The connect packet carries our protocol hash; the server validates it before
-            // admitting the peer and rejects mismatched builds (see ProtocolMismatchException)
-            ServerPeer = ENetHost.Connect(address, MaxChannels, Protocol.HandshakeHash);
-
-            if (!ServerPeer.IsSet)
-            {
-                Debugger.Instance.Log($"Error connecting.");
-                return;
-            }
-
-            NetStarted = true;
-            var worldRunner = new WorldRunner();
-            WorldRunner.CurrentWorld = worldRunner;
-            GetTree().CurrentScene.AddChild(worldRunner);
-            Debugger.Instance.Log("Started");
+            Transport.StartClient();
         }
 
         /// <summary>
@@ -445,7 +360,7 @@ namespace Nebula
                 ProjectSettings.GetSetting("Nebula/config/debug/simulate_incoming_tick_loss", 0).AsInt32(), 0, 100);
 
         /// <summary>RNG for <see cref="SimulateIncomingTickLoss"/>. Debug-only, client-local.</summary>
-        private static readonly RandomNumberGenerator _tickLossRng = new();
+        internal static readonly RandomNumberGenerator _tickLossRng = new();
 
         private static bool? _traceSpawnIds;
         /// <summary>
@@ -493,12 +408,6 @@ namespace Nebula
             DebugHub?.Poll();
         }
 
-        public event Action<uint> OnPeerConnected;
-
-        public event Action<uint> OnPeerDisconnected;
-
-        public event Action OnConnectedToServer;
-
         /// <summary>
         /// ENet disconnect reason code the server sends when rejecting a client whose
         /// protocol hash doesn't match ("PROT" in ASCII). Clients receiving this raise
@@ -538,192 +447,6 @@ namespace Nebula
         {
             if (!NetStarted)
                 return;
-
-            Event netEvent;
-            int checkResult = ENetHost.CheckEvents(out netEvent);
-            int serviceResult = 0;
-            
-            if (checkResult <= 0)
-            {
-                serviceResult = ENetHost.Service(0, out netEvent);
-            }
-            
-            while (checkResult > 0 || serviceResult > 0)
-            {
-                switch (netEvent.Type)
-                {
-                    case EventType.None:
-                        return;
-
-                    case EventType.Connect:
-                        if (IsServer)
-                        {
-                            // Protocol handshake: the connect packet's data field carries the
-                            // client's protocol hash. Reject mismatched builds before auth or
-                            // world admission - a mismatched client would misparse everything.
-                            if (netEvent.Data != Protocol.HandshakeHash)
-                            {
-                                Debugger.Instance.Log(Debugger.DebugLevel.ERROR,
-                                    $"Rejecting peer {netEvent.Peer.ID}: protocol hash mismatch (server 0x{Protocol.HandshakeHash:X8}, client 0x{netEvent.Data:X8}). Client is running a different build.");
-                                netEvent.Peer.Disconnect(ProtocolMismatchDisconnectCode);
-                                break;
-                            }
-
-                            Debugger.Instance.Log("Peer connected");
-                            PeersByNativeId[netEvent.Peer.ID] = netEvent.Peer;
-                            OnPeerConnected?.Invoke(netEvent.Peer.ID);
-                        }
-                        else
-                        {
-                            Debugger.Instance.Log("Connected to server");
-                            OnConnectedToServer?.Invoke();
-                        }
-                        break;
-
-                    case EventType.Disconnect:
-                    case EventType.Timeout:
-                        if (!IsServer
-                            && netEvent.Type == EventType.Disconnect
-                            && netEvent.Data == ProtocolMismatchDisconnectCode)
-                        {
-                            _OnPeerDisconnected(netEvent.Peer);
-
-                            var mismatch = new ProtocolMismatchException(Protocol.Hash, Protocol.HandshakeHash);
-                            Debugger.Instance.Log(mismatch.Message, Debugger.DebugLevel.ERROR);
-                            if (OnProtocolMismatch != null)
-                            {
-                                OnProtocolMismatch.Invoke(mismatch);
-                                break;
-                            }
-                            throw mismatch;
-                        }
-                        _OnPeerDisconnected(netEvent.Peer);
-                        break;
-
-                    case EventType.Receive:
-                    {
-                        var channel = netEvent.ChannelID;
-                        var packetData = new byte[netEvent.Packet.Length];
-                        netEvent.Packet.CopyTo(packetData);
-                        netEvent.Packet.Dispose();
-
-                        using var data = new NetBuffer(packetData);
-
-                        // A malformed packet must never abort the event pump: an unhandled
-                        // exception here would drop every remaining queued event this frame for
-                        // ALL peers. Catch per-packet so one bad sender can't stall everyone.
-                        try
-                        {
-                        switch ((ENetChannelId)channel)
-                        {
-                            case ENetChannelId.Tick:
-                                if (IsServer)
-                                {
-                                    if (packetData.Length == 0)
-                                    {
-                                        break;
-                                    }
-                                    var tick = NetReader.ReadInt32(data);
-                                    var peerId = GetPeerId(netEvent.Peer);
-                                    if (PeerWorldMap.TryGetValue(peerId, out var world))
-                                    {
-                                        world.PeerAcknowledge(netEvent.Peer, tick);
-                                    }
-                                }
-                                else
-                                {
-                                    if (packetData.Length == 0)
-                                    {
-                                        break;
-                                    }
-                                    var tick = NetReader.ReadInt32(data);
-                                    var bytes = NetReader.ReadRemainingBytes(data);
-                                    // Debug: dump the full payload hex for every server tick
-                                    // (gated behind the Nebula/config/debug/log_tick_payloads setting).
-                                    if (LogTickPayloads)
-                                    {
-                                        Debugger.Instance.Log(Debugger.DebugLevel.INFO,
-                                            $"[Nebula][TickPayload] tick={tick} ({bytes.Length} bytes) {Convert.ToHexString(bytes)}");
-                                    }
-                                    // Debug: simulate packet loss by dropping received ticks before
-                                    // processing. Client-side only, never touches the shared sim -
-                                    // exists to exercise loss-recovery paths (spawn resend, delta
-                                    // baseline fallback) deterministically on a LAN with no real loss.
-                                    if (SimulateIncomingTickLoss > 0
-                                        && _tickLossRng.RandiRange(1, 100) <= SimulateIncomingTickLoss)
-                                    {
-                                        break;
-                                    }
-                                    WorldRunner.CurrentWorld.ClientProcessTick(tick, bytes);
-                                }
-                                break;
-
-                            case ENetChannelId.Input:
-                                if (IsServer)
-                                {
-                                    var peerId = GetPeerId(netEvent.Peer);
-                                    if (PeerWorldMap.TryGetValue(peerId, out var world))
-                                    {
-                                        world.ReceiveInput(netEvent.Peer, data);
-                                    }
-                                }
-                                // Clients should never receive messages on the Input channel
-                                break;
-
-                            case ENetChannelId.Function:
-                                if (IsServer)
-                                {
-                                    var peerId = GetPeerId(netEvent.Peer);
-                                    if (PeerWorldMap.TryGetValue(peerId, out var world))
-                                    {
-                                        world.ReceiveNetFunction(netEvent.Peer, data);
-                                    }
-                                }
-                                else
-                                {
-                                    WorldRunner.CurrentWorld.ReceiveNetFunction(ServerPeer, data);
-                                }
-                                break;
-
-                            case ENetChannelId.World:
-                                HandleWorldChannel(netEvent.Peer, packetData);
-                                break;
-
-                            default:
-                                if (ReservedChannels.TryGetValue(channel, out var handler))
-                                {
-                                    var peer = GetPeerByNativeId(netEvent.Peer.ID);
-                                    if (peer.IsSet)
-                                    {
-                                        handler(peer, packetData);
-                                    }
-                                }
-                                break;
-                        }
-                        }
-                        catch (Exception ex)
-                        {
-                            // Server: drop the offending peer (see MalformedPacketDisconnectCode).
-                            // Client: the server is trusted, so a malformed packet is a bug, not
-                            // an attack - log it but stay connected.
-                            Debugger.Instance.Log(Debugger.DebugLevel.ERROR,
-                                $"[Nebula][MalformedPacket] Failed to parse packet on channel {channel} from peer {netEvent.Peer.ID}: {ex.Message}");
-                            if (IsServer)
-                            {
-                                netEvent.Peer.Disconnect(MalformedPacketDisconnectCode);
-                            }
-                        }
-                        break;
-                    }
-                }
-
-                // Check for more events
-                checkResult = ENetHost.CheckEvents(out netEvent);
-                if (checkResult <= 0)
-                {
-                    serviceResult = ENetHost.Service(0, out netEvent);
-                }
-            }
         }
 
         /// <summary>
@@ -819,7 +542,7 @@ namespace Nebula
         private readonly Dictionary<UUID, PendingHandoff> _pendingHandoffs = new();
 
         // Reused buffer for the tiny 17-byte World-channel messages (no per-send allocation).
-        private NetBuffer _worldChannelBuffer;
+        internal NetBuffer _worldChannelBuffer;
 
         /// <summary>
         /// Server-only. Migrates a connected peer from its current world to <paramref name="target"/>
@@ -853,7 +576,7 @@ namespace Nebula
             SendWorldMessage(peer, WorldMsgChangeWorld, target.WorldId);
         }
 
-        private void HandleWorldChannel(NetPeer peer, byte[] data)
+        internal void HandleWorldChannel(NetPeer peer, byte[] data)
         {
             // Message format: [opcode:1B][worldId:16B]
             if (data.Length < 1)
@@ -957,13 +680,6 @@ namespace Nebula
             worldRunner.Debug?.Send("WorldCreated", worldId.ToString());
             OnWorldCreated?.Invoke(worldRunner);
             return worldRunner;
-        }
-
-        public void _OnPeerDisconnected(Peer peer)
-        {
-            Debugger.Instance.Log($"Peer disconnected peerId: {peer.ID}");
-            OnPeerDisconnected?.Invoke(peer.ID);
-            PeersByNativeId.Remove(peer.ID);
         }
     }
 }

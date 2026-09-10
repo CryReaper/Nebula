@@ -40,8 +40,6 @@ public partial class ProjectSettingsController : Node
         ("Nebula/config/default_port",          "Nebula/config/network/default_port"),
         ("Nebula/config/mtu",                   "Nebula/config/network/mtu"),
         ("Nebula/config/default_scene",         "Nebula/config/world/default_scene"),
-        ("Nebula/config/pack_enabled",          "Nebula/config/pack/enabled"),
-        ("Nebula/config/pack_validate",         "Nebula/config/pack/validate"),
         ("Nebula/config/log_level",             "Nebula/config/debug/log_level"),
         ("Nebula/config/log_tick_payloads",     "Nebula/config/debug/log_tick_payloads"),
         ("Nebula/config/debug_export_interval", "Nebula/config/debug/export_interval"),
@@ -124,6 +122,26 @@ public partial class ProjectSettingsController : Node
             {"hint", (int)PropertyHint.Range},
             {"hint_string", "100,65535,1"},
         });
+
+        // ── Build ────────────────────────────────────────────────────────
+        // Whether the EDITOR build compiles MongoDB.Bson and the BSON persistence API; Nebula.props
+        // reads this key straight from project.godot. Exports decide per preset through the
+        // "nebula/bson_support" export option (see Tools/Export/NebulaBuildExportPlugin.cs). Off by
+        // default: a project that never persists ships no BSON anywhere.
+        Register(NebulaBuildExportPlugin.ProjectSettingName, false, new(){
+            {"type", (int)Variant.Type.Bool},
+        });
+
+        // Probe for the export plugin, not a user setting: the preset API exposes no "is this a
+        // dedicated server" query to plugins, but EditorExportPreset.GetProjectSetting answers with the
+        // preset's feature tags applied. Base value false, feature override true, so
+        // GetProjectSetting(probe) is true exactly for presets carrying the dedicated_server tag.
+        ProjectSettings.SetSetting(NebulaBuildExportPlugin.DedicatedServerProbeSetting, false);
+        ProjectSettings.SetInitialValue(NebulaBuildExportPlugin.DedicatedServerProbeSetting, false);
+        ProjectSettings.SetAsInternal(NebulaBuildExportPlugin.DedicatedServerProbeSetting, true);
+        ProjectSettings.SetSetting(NebulaBuildExportPlugin.DedicatedServerProbeOverride, true);
+        ProjectSettings.SetInitialValue(NebulaBuildExportPlugin.DedicatedServerProbeOverride, true);
+        ProjectSettings.SetAsInternal(NebulaBuildExportPlugin.DedicatedServerProbeOverride, true);
 
         // Liveness cutoff for in-world peers: seconds without a tick ack before the
         // server force-disconnects.
@@ -241,21 +259,6 @@ public partial class ProjectSettingsController : Node
             {"type", (int)Variant.Type.Int},
             {"hint", (int)PropertyHint.Range},
             {"hint_string", "0,5000,10"},
-        });
-
-        // ── Pack ─────────────────────────────────────────────────────────
-        // NebulaPack: delta-compress tick payloads against a baseline the peer has acknowledged.
-        // Server-side and per-packet - every packet says whether it is a delta or raw - so clients
-        // decode both regardless and no handshake is involved.
-        Register("Nebula/config/pack/enabled", true, new(){
-            {"type", (int)Variant.Type.Bool},
-        });
-
-        // NebulaPack: append a checksum of the raw payload and verify it after decoding. Costs 2
-        // bytes per packet and turns any window divergence into an immediate, loud failure rather
-        // than silently corrupted state. Worth leaving on until the feature has real mileage.
-        Register("Nebula/config/pack/validate", true, new(){
-            {"type", (int)Variant.Type.Bool},
         });
 
         // ── Threading ────────────────────────────────────────────────────
